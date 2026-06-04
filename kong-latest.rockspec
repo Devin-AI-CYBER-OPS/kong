@@ -395,6 +395,12 @@ build = {
     ["kong.plugins.key-auth.schema"] = "kong/plugins/key-auth/schema.lua",
     ["kong.plugins.key-auth.daos"] = "kong/plugins/key-auth/daos.lua",
 
+    ["kong.plugins.keycloak-oidc.handler"] = "kong/plugins/keycloak-oidc/handler.lua",
+    ["kong.plugins.keycloak-oidc.schema"] = "kong/plugins/keycloak-oidc/schema.lua",
+
+    ["kong.plugins.elastic-logger.handler"] = "kong/plugins/elastic-logger/handler.lua",
+    ["kong.plugins.elastic-logger.schema"] = "kong/plugins/elastic-logger/schema.lua",
+
     ["kong.plugins.oauth2.migrations"] = "kong/plugins/oauth2/migrations/init.lua",
     ["kong.plugins.oauth2.migrations.000_base_oauth2"] = "kong/plugins/oauth2/migrations/000_base_oauth2.lua",
     ["kong.plugins.oauth2.migrations.003_130_to_140"] = "kong/plugins/oauth2/migrations/003_130_to_140.lua",

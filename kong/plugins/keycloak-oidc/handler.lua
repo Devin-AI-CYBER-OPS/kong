@@ -19,7 +19,6 @@ local random_string = require("kong.tools.rand").random_string
 
 
 local HEADERS_CONSUMER_ID        = constants.HEADERS.CONSUMER_ID
-local HEADERS_CONSUMER_CUSTOM_ID = constants.HEADERS.CONSUMER_CUSTOM_ID
 local HEADERS_CONSUMER_USERNAME  = constants.HEADERS.CONSUMER_USERNAME
 local HEADERS_ANONYMOUS          = constants.HEADERS.ANONYMOUS
 

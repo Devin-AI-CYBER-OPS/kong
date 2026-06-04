@@ -14,10 +14,7 @@ local kong      = kong
 local ngx       = ngx
 local fmt       = string.format
 local pairs     = pairs
-local tostring  = tostring
-local tonumber  = tonumber
 local table_concat = table.concat
-local ngx_now   = ngx.now
 
 
 local ElasticLoggerHandler = {

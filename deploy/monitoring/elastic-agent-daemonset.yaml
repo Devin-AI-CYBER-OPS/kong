@@ -29,6 +29,9 @@ spec:
       containers:
         - name: elastic-agent
           image: docker.elastic.co/beats/elastic-agent:8.17.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false  # Agent needs write access for state
           env:
             - name: FLEET_URL
               valueFrom:

@@ -1,0 +1,51 @@
+# Security: Hardened Kong Docker image for federal/STIG deployment.
+# Base: Iron Bank (DoD-approved) or Chainguard hardened image.
+# Runs as non-root, no shell, minimal attack surface.
+# References: CIS Docker Benchmark, DISA Container STIG
+
+# -- Build stage: install custom plugins --
+FROM registry1.dso.mil/ironbank/opensource/kong/kong:3.9 AS base
+
+# Metadata
+LABEL maintainer="Platform Engineering <platform@example.com>"
+LABEL org.opencontainers.image.title="kong-federal"
+LABEL org.opencontainers.image.description="Hardened Kong Gateway with Keycloak OIDC and Elastic logging plugins"
+LABEL org.opencontainers.image.vendor="Federal Platform Team"
+
+# Switch to root temporarily to install custom plugins
+USER root
+
+# Copy custom plugins into the Kong plugins directory
+COPY kong/plugins/keycloak-oidc/ /usr/local/share/lua/5.1/kong/plugins/keycloak-oidc/
+COPY kong/plugins/elastic-logger/ /usr/local/share/lua/5.1/kong/plugins/elastic-logger/
+
+# Set ownership to kong user
+RUN chown -R kong:kong /usr/local/share/lua/5.1/kong/plugins/keycloak-oidc/ && \
+    chown -R kong:kong /usr/local/share/lua/5.1/kong/plugins/elastic-logger/
+
+# -- Production stage: non-root, no shell --
+FROM base AS production
+
+# Remove unnecessary packages for minimal attack surface
+# (Iron Bank images are already minimal; this is defense-in-depth)
+USER root
+RUN rm -f /bin/sh /bin/bash /bin/dash 2>/dev/null || true
+
+# Switch back to non-root kong user
+USER kong
+
+# Register custom plugins via environment variable
+ENV KONG_PLUGINS="bundled,keycloak-oidc,elastic-logger"
+ENV KONG_LOG_LEVEL="info"
+ENV KONG_SSL_PROTOCOLS="TLSv1.2 TLSv1.3"
+ENV KONG_SSL_CIPHER_SUITE="custom"
+ENV KONG_SSL_CIPHERS="ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256"
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+  CMD kong health || exit 1
+
+EXPOSE 8443 8444 8100
+
+ENTRYPOINT ["/docker-entrypoint.sh"]
+CMD ["kong", "docker-start"]

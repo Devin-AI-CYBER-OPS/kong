@@ -1,0 +1,85 @@
+# Filebeat configuration for Kong log collection.
+# Parses Kong JSON access logs and maps to Elastic Common Schema (ECS).
+# References: NIST SP 800-53 AU-2/AU-6
+
+filebeat.inputs:
+  - type: container
+    paths:
+      - /var/log/containers/kong-*.log
+    # Kong outputs JSON-formatted access logs to stdout
+    json.keys_under_root: true
+    json.add_error_key: true
+    json.message_key: message
+
+    # Multiline handling for Kong error logs (Lua stack traces)
+    multiline.pattern: '^\d{4}/\d{2}/\d{2}'
+    multiline.negate: true
+    multiline.match: after
+
+    processors:
+      - add_kubernetes_metadata:
+          host: ${NODE_NAME}
+          matchers:
+            - logs_path:
+                logs_path: "/var/log/containers/"
+
+      # Map Kong log fields to ECS
+      - rename:
+          fields:
+            - from: "client_ip"
+              to: "source.ip"
+            - from: "request.uri"
+              to: "url.path"
+            - from: "request.method"
+              to: "http.request.method"
+            - from: "request.size"
+              to: "http.request.body.bytes"
+            - from: "response.status"
+              to: "http.response.status_code"
+            - from: "response.size"
+              to: "http.response.body.bytes"
+            - from: "service.name"
+              to: "service.name"
+            - from: "route.name"
+              to: "kong.route.name"
+            - from: "consumer.username"
+              to: "user.name"
+            - from: "latencies.request"
+              to: "event.duration"
+          ignore_missing: true
+          fail_on_error: false
+
+      # Add static fields for index filtering
+      - add_fields:
+          target: event
+          fields:
+            dataset: kong.access
+            kind: event
+            category: ["web"]
+
+      # Drop health check noise
+      - drop_event:
+          when:
+            or:
+              - equals:
+                  url.path: "/status"
+              - equals:
+                  url.path: "/status/ready"
+
+# -- Output to Elasticsearch --
+output.elasticsearch:
+  hosts: ["${ELASTICSEARCH_HOSTS}"]
+  api_key: "${ELASTICSEARCH_API_KEY}"
+  index: "kong-logs-%{+yyyy.MM.dd}"
+  ssl.verification_mode: full
+  ssl.certificate_authorities:
+    - /etc/filebeat/certs/ca.crt
+
+# -- ILM policy reference --
+setup.ilm.enabled: true
+setup.ilm.rollover_alias: "kong-logs"
+setup.ilm.policy_name: "kong-log-retention"
+
+# -- Logging --
+logging.level: warning
+logging.to_stderr: true

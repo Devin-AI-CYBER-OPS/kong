@@ -1,0 +1,45 @@
+# Security: Declarative Kong configuration for the keycloak-oidc plugin.
+# This file is loaded via Kong's declarative config (KONG_DECLARATIVE_CONFIG).
+# References: RFC 6749/7636, NIST SP 800-63B, STIG V-222602
+
+_format_version: "3.0"
+
+plugins:
+  - name: keycloak-oidc
+    enabled: true
+    config:
+      # Discovery endpoint — replace <keycloak-host> with the actual Keycloak FQDN
+      discovery_url: "https://<keycloak-host>/realms/kong-federation/.well-known/openid-configuration"
+
+      # Client credentials — use Kong vault references in production:
+      #   {vault://aws/kong-oidc-client-id}
+      #   {vault://aws/kong-oidc-client-secret}
+      client_id: "kong-gateway"
+      client_secret: "{vault://aws/kong-oidc-client-secret}"
+
+      scopes:
+        - openid
+        - profile
+        - email
+
+      response_type: "code"
+      token_endpoint_auth_method: "client_secret_post"
+
+      ssl_verify: true
+
+      # Session secret — use vault reference in production
+      session_secret: "{vault://aws/kong-session-secret}"
+
+      # Paths
+      logout_path: "/logout"
+      redirect_uri_path: "/auth/callback"
+
+      # STIG session timeout requirements (V-222602)
+      session_lifetime: 900          # 15-minute idle timeout
+      session_absolute_timeout: 28800  # 8-hour absolute timeout
+
+      # Bearer token introspection for API-to-API flows
+      bearer_token_fallback: true
+
+      # PKCE enforcement per RFC 7636 — strict for defense environments
+      pkce: "strict"

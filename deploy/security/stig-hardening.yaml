@@ -1,0 +1,66 @@
+# Security: Kong declarative config applying STIG/OWASP security hardening globally.
+# Each plugin maps to one or more STIG/OWASP controls documented in stig-checklist.md.
+# References: DISA STIG, OWASP API Security Top 10, NIST SP 800-53
+
+_format_version: "3.0"
+
+plugins:
+  # -- OWASP security headers via response-transformer --
+  # Controls: STIG V-222596 (TLS/HSTS), OWASP API7 (Security Misconfiguration)
+  - name: response-transformer
+    enabled: true
+    config:
+      add:
+        headers:
+          - "Strict-Transport-Security: max-age=63072000; includeSubDomains; preload"
+          - "X-Content-Type-Options: nosniff"
+          - "X-Frame-Options: DENY"
+          - "Content-Security-Policy: default-src 'none'"
+          - "X-XSS-Protection: 0"
+          - "Cache-Control: no-store"
+          - "Referrer-Policy: strict-origin-when-cross-origin"
+          - "Permissions-Policy: geolocation=(), microphone=(), camera=()"
+      remove:
+        headers:
+          - "Server"
+          - "X-Powered-By"
+
+  # -- Rate limiting --
+  # Controls: OWASP API4 (Lack of Resources & Rate Limiting)
+  - name: rate-limiting
+    enabled: true
+    config:
+      minute: 120
+      hour: 3600
+      policy: local
+      fault_tolerant: true
+      hide_client_headers: false
+      error_code: 429
+      error_message: "Rate limit exceeded. Retry after the window resets."
+
+  # -- IP restriction (template — customize per environment) --
+  # Controls: STIG V-222543 (Access Control), OWASP API5
+  - name: ip-restriction
+    enabled: false
+    config:
+      allow:
+        - "10.0.0.0/8"
+        - "172.16.0.0/12"
+        - "192.168.0.0/16"
+      status: 403
+      message: "Access denied by network policy"
+
+  # -- Correlation ID for distributed tracing --
+  # Controls: STIG V-222531 (Audit Logging), NIST SP 800-53 AU-3
+  - name: correlation-id
+    enabled: true
+    config:
+      header_name: "X-Request-ID"
+      generator: "uuid#counter"
+      echo_downstream: true
+
+  # -- Bot detection --
+  # Controls: OWASP API4 (resource protection)
+  - name: bot-detection
+    enabled: true
+    config: {}

@@ -1,0 +1,180 @@
+# Security: Kubernetes NetworkPolicy manifests for the Kong namespace.
+# Implements default-deny with explicit allow rules per STIG V-222544.
+# References: NIST SP 800-53 SC-7, DISA STIG network segmentation
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kong-default-deny
+  namespace: kong
+  labels:
+    app.kubernetes.io/part-of: kong-federal
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+---
+# Allow ingress to Kong proxy pods from the load balancer / ingress controller
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kong-proxy-ingress
+  namespace: kong
+  labels:
+    app.kubernetes.io/part-of: kong-federal
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: proxy
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: aws-load-balancer-controller
+      ports:
+        - protocol: TCP
+          port: 8443
+
+---
+# Allow Kong proxy pods egress to Keycloak
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kong-egress-keycloak
+  namespace: kong
+  labels:
+    app.kubernetes.io/part-of: kong-federal
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: proxy
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: keycloak
+      ports:
+        - protocol: TCP
+          port: 8443
+
+---
+# Allow Kong proxy pods egress to Elasticsearch
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kong-egress-elastic
+  namespace: kong
+  labels:
+    app.kubernetes.io/part-of: kong-federal
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: proxy
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: elastic-system
+      ports:
+        - protocol: TCP
+          port: 9200
+
+---
+# Allow Kong proxy pods egress to upstream services (adjust namespace labels)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kong-egress-upstream
+  namespace: kong
+  labels:
+    app.kubernetes.io/part-of: kong-federal
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: proxy
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kong-upstream: "true"
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 8443
+
+---
+# Allow DNS resolution for all Kong pods
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kong-egress-dns
+  namespace: kong
+  labels:
+    app.kubernetes.io/part-of: kong-federal
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+---
+# Allow inter-pod communication between Kong data plane and control plane
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kong-internal
+  namespace: kong
+  labels:
+    app.kubernetes.io/part-of: kong-federal
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: kong
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: kong
+      ports:
+        - protocol: TCP
+          port: 8005   # Cluster listener
+        - protocol: TCP
+          port: 8444   # Admin API (internal)
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: kong
+      ports:
+        - protocol: TCP
+          port: 8005
+        - protocol: TCP
+          port: 8444

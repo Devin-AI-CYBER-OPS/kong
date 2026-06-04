@@ -1,0 +1,93 @@
+{
+  "alerting_rules": [
+    {
+      "name": "Kong High Error Rate (5xx)",
+      "description": "Fires when the 5xx error rate exceeds 5% of total requests over 5 minutes.",
+      "rule_type": "threshold",
+      "index": "kong-logs-*",
+      "conditions": {
+        "field": "http.response.status_code",
+        "comparator": "gte",
+        "value": 500,
+        "time_window": "5m",
+        "threshold_percentage": 5.0,
+        "denominator_filter": "*"
+      },
+      "severity": "critical",
+      "actions": {
+        "notify": ["ops-team-webhook"],
+        "message": "Kong 5xx error rate exceeded 5% in the last 5 minutes. Investigate upstream service health."
+      }
+    },
+    {
+      "name": "Authentication Failure Spike",
+      "description": "Fires when authentication failures (401) exceed 50 in 5 minutes.",
+      "rule_type": "threshold",
+      "index": "kong-logs-*",
+      "conditions": {
+        "field": "http.response.status_code",
+        "comparator": "eq",
+        "value": 401,
+        "time_window": "5m",
+        "threshold_count": 50
+      },
+      "severity": "high",
+      "actions": {
+        "notify": ["security-team-webhook"],
+        "message": "Spike in 401 authentication failures detected. Possible brute-force or credential stuffing attack."
+      }
+    },
+    {
+      "name": "Rate Limiting Trigger Spike",
+      "description": "Fires when rate-limited requests (429) exceed 100 in 5 minutes.",
+      "rule_type": "threshold",
+      "index": "kong-logs-*",
+      "conditions": {
+        "field": "http.response.status_code",
+        "comparator": "eq",
+        "value": 429,
+        "time_window": "5m",
+        "threshold_count": 100
+      },
+      "severity": "medium",
+      "actions": {
+        "notify": ["ops-team-webhook"],
+        "message": "High number of rate-limited requests. Review rate-limiting thresholds or identify abusive clients."
+      }
+    },
+    {
+      "name": "Latency Degradation (P99 > 5s)",
+      "description": "Fires when P99 request latency exceeds 5 seconds over 10 minutes.",
+      "rule_type": "metric_threshold",
+      "index": "kong-logs-*",
+      "conditions": {
+        "metric": "event.duration",
+        "aggregation": "percentiles",
+        "percentile": 99,
+        "comparator": "gt",
+        "value_ms": 5000,
+        "time_window": "10m"
+      },
+      "severity": "high",
+      "actions": {
+        "notify": ["ops-team-webhook"],
+        "message": "Kong P99 latency exceeded 5s. Check upstream service performance and Kong resource utilization."
+      }
+    },
+    {
+      "name": "Kong Pod Restart",
+      "description": "Fires when any Kong pod restarts. May indicate OOM, crash loops, or health check failures.",
+      "rule_type": "kubernetes_event",
+      "conditions": {
+        "namespace": "kong",
+        "event_reason": "Restarted",
+        "container_name": "kong"
+      },
+      "severity": "high",
+      "actions": {
+        "notify": ["ops-team-webhook"],
+        "message": "Kong pod restarted. Check pod logs and resource limits."
+      }
+    }
+  ]
+}

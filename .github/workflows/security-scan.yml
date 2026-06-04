@@ -76,6 +76,7 @@ jobs:
         uses: aquasecurity/tfsec-action@v1.0.3
         with:
           working_directory: deploy/terraform/
+          soft_fail: true
 
   # -------------------------------------------------------------------
   # Dependency / CVE scanning

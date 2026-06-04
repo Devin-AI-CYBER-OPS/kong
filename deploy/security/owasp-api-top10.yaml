@@ -1,0 +1,107 @@
+# Security: Kong plugin configurations addressing the OWASP API Security Top 10 (2023).
+# Each section maps an OWASP risk to one or more Kong plugins.
+# Apply route-level overrides where tighter controls are needed.
+# References: https://owasp.org/API-Security/
+
+_format_version: "3.0"
+
+plugins:
+  # -----------------------------------------------------------------------
+  # API1:2023 — Broken Object Level Authorization
+  # Mitigation: ACL plugin to enforce group-based access per route/service.
+  # -----------------------------------------------------------------------
+  - name: acl
+    enabled: true
+    config:
+      allow:
+        - "authorized-consumers"
+      deny: []
+      hide_groups_header: false
+
+  # -----------------------------------------------------------------------
+  # API2:2023 — Broken Authentication
+  # Mitigation: keycloak-oidc plugin enforces OIDC auth on all routes.
+  # (Configured globally in kong-oidc-plugin-config.yaml)
+  # -----------------------------------------------------------------------
+
+  # -----------------------------------------------------------------------
+  # API3:2023 — Broken Object Property Level Authorization
+  # Mitigation: response-transformer strips sensitive fields from responses.
+  # Customize per-route to match upstream schemas.
+  # -----------------------------------------------------------------------
+  - name: response-transformer
+    enabled: true
+    config:
+      remove:
+        json:
+          - "internal_id"
+          - "debug_info"
+          - "stack_trace"
+        headers:
+          - "Server"
+          - "X-Powered-By"
+
+  # -----------------------------------------------------------------------
+  # API4:2023 — Unrestricted Resource Consumption
+  # Mitigation: rate-limiting + request-size-limiting plugins.
+  # -----------------------------------------------------------------------
+  - name: rate-limiting
+    enabled: true
+    config:
+      minute: 120
+      hour: 3600
+      policy: local
+      fault_tolerant: true
+      error_code: 429
+      error_message: "Rate limit exceeded"
+
+  - name: request-size-limiting
+    enabled: true
+    config:
+      allowed_payload_size: 10    # MB
+      size_unit: "megabytes"
+      require_content_length: false
+
+  # -----------------------------------------------------------------------
+  # API5:2023 — Broken Function Level Authorization
+  # Mitigation: route-level ACL groups restrict admin endpoints.
+  # Example: apply this config on admin-facing routes only.
+  # -----------------------------------------------------------------------
+  # (Route-level ACL example — uncomment and attach to specific routes)
+  # - name: acl
+  #   route: admin-routes
+  #   config:
+  #     allow:
+  #       - "kong-admin"
+
+  # -----------------------------------------------------------------------
+  # API6:2023 — Unrestricted Access to Sensitive Business Flows
+  # Mitigation: bot-detection + rate-limiting (configured above)
+  # -----------------------------------------------------------------------
+  - name: bot-detection
+    enabled: true
+    config: {}
+
+  # -----------------------------------------------------------------------
+  # API7:2023 — Server Side Request Forgery (SSRF)
+  # Mitigation: Kubernetes NetworkPolicy restricts egress (network-policies.yaml).
+  # Kong-level: no direct mitigation plugin, but ip-restriction limits inbound.
+  # -----------------------------------------------------------------------
+
+  # -----------------------------------------------------------------------
+  # API8:2023 — Security Misconfiguration
+  # Mitigation: response-transformer adds security headers; debug mode disabled.
+  # (Security headers configured in stig-hardening.yaml)
+  # -----------------------------------------------------------------------
+
+  # -----------------------------------------------------------------------
+  # API9:2023 — Improper Inventory Management
+  # Mitigation: Declarative config (DB-less mode) ensures routes are version-controlled.
+  # CI pipeline validates config before deployment.
+  # -----------------------------------------------------------------------
+
+  # -----------------------------------------------------------------------
+  # API10:2023 — Unsafe Consumption of APIs
+  # Mitigation: ssl_verify=true on all outbound plugin configs;
+  # upstream TLS validation enforced via Kong proxy settings.
+  # -----------------------------------------------------------------------

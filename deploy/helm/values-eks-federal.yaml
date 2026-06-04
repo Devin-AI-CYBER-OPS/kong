@@ -1,0 +1,157 @@
+# Security: Helm values override for Kong on EKS with federal/STIG hardening.
+# Targets the official Kong Helm chart (https://github.com/Kong/charts).
+# References: NIST SP 800-53 SC-8/SC-13, DISA STIG V-222596, CIS Kubernetes Benchmark
+
+# -- Iron Bank hardened image (DoD-approved base) --
+image:
+  repository: registry1.dso.mil/ironbank/opensource/kong/kong
+  tag: "3.9"
+  pullPolicy: IfNotPresent
+  pullSecrets:
+    - name: registry1-credentials
+
+# -- Kong Ingress Controller --
+ingressController:
+  enabled: true
+  image:
+    repository: registry1.dso.mil/ironbank/opensource/kong/kubernetes-ingress-controller
+    tag: "3.4"
+  env:
+    # Controller watches only its own namespace unless explicitly broadened
+    controller_ingress_class: "kong-federal"
+
+# -- Proxy listener: TLS-only, FIPS cipher suites --
+proxy:
+  enabled: true
+  type: LoadBalancer
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: nlb
+    service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+    service.beta.kubernetes.io/aws-load-balancer-ssl-cert: "${ACM_CERT_ARN}"
+  tls:
+    enabled: true
+    servicePort: 443
+    containerPort: 8443
+  http:
+    enabled: false    # STIG: no plaintext HTTP
+  ingress:
+    enabled: false
+
+# -- Admin API: internal only, mTLS-gated --
+admin:
+  enabled: true
+  type: ClusterIP    # Security: never expose admin externally
+  tls:
+    enabled: true
+    servicePort: 8444
+    containerPort: 8444
+  http:
+    enabled: false
+  ingress:
+    enabled: false
+
+# -- TLS enforcement: minimum TLS 1.2, FIPS-approved ciphers only --
+# References: NIST SP 800-52r2, STIG V-222596
+env:
+  ssl_cipher_suite: "custom"
+  ssl_ciphers: "ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256"
+  ssl_protocols: "TLSv1.2 TLSv1.3"
+  nginx_proxy_ssl_protocols: "TLSv1.2 TLSv1.3"
+  ssl_cert: "/etc/secrets/tls/tls.crt"
+  ssl_cert_key: "/etc/secrets/tls/tls.key"
+  admin_ssl_cert: "/etc/secrets/tls/tls.crt"
+  admin_ssl_cert_key: "/etc/secrets/tls/tls.key"
+  plugins: "bundled,keycloak-oidc,elastic-logger"
+  log_level: "info"
+  # DB-less mode for declarative config
+  database: "off"
+  declarative_config: "/kong-dbless/kong.yml"
+
+# -- Resource requests/limits --
+resources:
+  requests:
+    cpu: "500m"
+    memory: "512Mi"
+  limits:
+    cpu: "2000m"
+    memory: "2Gi"
+
+# -- Pod security context: STIG container hardening --
+# References: CIS Benchmark 5.2, STIG V-222602
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+# -- Service account with IRSA for AWS integration --
+serviceAccount:
+  create: true
+  annotations:
+    eks.amazonaws.com/role-arn: "${KONG_IRSA_ROLE_ARN}"
+
+# -- Health probes --
+readinessProbe:
+  httpGet:
+    path: /status/ready
+    port: 8100
+    scheme: HTTP
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 5
+
+livenessProbe:
+  httpGet:
+    path: /status
+    port: 8100
+    scheme: HTTP
+  initialDelaySeconds: 30
+  periodSeconds: 15
+  timeoutSeconds: 5
+
+# -- Autoscaling --
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+# -- Pod disruption budget --
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# -- Node affinity: dedicated security-zone node group --
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/security-zone
+              operator: In
+              values:
+                - api-gateway
+
+tolerations:
+  - key: "security-zone"
+    operator: "Equal"
+    value: "api-gateway"
+    effect: "NoSchedule"
+
+# -- Extra volume mounts for TLS secrets --
+secretVolumes:
+  - kong-tls-cert
+
+extraVolumeMounts:
+  - name: kong-tls-cert
+    mountPath: /etc/secrets/tls
+    readOnly: true

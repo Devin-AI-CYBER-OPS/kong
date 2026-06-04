@@ -1,0 +1,12 @@
+# Security: Default-deny NetworkPolicy for the kong namespace.
+# Explicit allow rules are defined in deploy/security/network-policies.yaml.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kong-default-deny
+  namespace: kong
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress

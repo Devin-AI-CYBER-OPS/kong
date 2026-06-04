@@ -1,0 +1,15 @@
+# Kustomize base for Kong federal EKS deployment.
+# Adds NetworkPolicy, PodDisruptionBudget, and HPA on top of Helm-templated output.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: kong
+
+resources:
+  - network-policy.yaml
+  - pod-disruption-budget.yaml
+  - hpa.yaml
+
+---
+# network-policy.yaml is defined in deploy/security/network-policies.yaml and
+# symlinked or copied here during CI. The base only declares the reference.

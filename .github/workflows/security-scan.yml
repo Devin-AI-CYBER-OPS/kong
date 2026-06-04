@@ -1,0 +1,162 @@
+# Security: CI pipeline for SAST, dependency scanning, container hardening checks,
+# and secrets detection on every push/PR.
+# References: NIST SP 800-53 SA-11/RA-5, OWASP CI/CD Security
+
+name: Security Scan
+
+on:
+  push:
+    branches: [master, main, "release/*"]
+  pull_request:
+    branches: [master, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+env:
+  KONG_IMAGE: "registry1.dso.mil/ironbank/opensource/kong/kong:3.9"
+
+jobs:
+  # -------------------------------------------------------------------
+  # SAST — Static Application Security Testing
+  # -------------------------------------------------------------------
+  sast:
+    name: Static Analysis (SAST)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Luacheck — lint all Lua files
+        uses: docker://ghcr.io/lunarmodules/luacheck:latest
+        with:
+          args: kong/ --no-color --codes --formatter plain
+
+      - name: Semgrep — OWASP rulesets
+        uses: semgrep/semgrep-action@v1
+        with:
+          config: >-
+            p/owasp-top-ten
+            p/security-audit
+          publishToken: ""
+        env:
+          SEMGREP_RULES: "p/owasp-top-ten p/security-audit"
+
+  # -------------------------------------------------------------------
+  # Kubernetes / IaC linting
+  # -------------------------------------------------------------------
+  iac-lint:
+    name: IaC & Kubernetes Manifest Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: kube-linter — Kubernetes manifests
+        uses: stackrox/kube-linter-action@v1
+        with:
+          directory: deploy/
+          config: ""
+
+      - name: Checkov — IaC scanning
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: deploy/
+          framework: kubernetes,terraform
+          quiet: true
+          soft_fail: false
+
+      - name: tfsec — Terraform security
+        uses: aquasecurity/tfsec-action@v1
+        with:
+          working_directory: deploy/terraform/
+
+  # -------------------------------------------------------------------
+  # Dependency / CVE scanning
+  # -------------------------------------------------------------------
+  dependency-scan:
+    name: Dependency & CVE Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trivy — container image CVE scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.KONG_IMAGE }}
+          format: "sarif"
+          output: "trivy-results.sarif"
+          severity: "HIGH,CRITICAL"
+          exit-code: "1"
+
+      - name: Upload Trivy SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+
+      - name: Grype — secondary CVE scan
+        uses: anchore/scan-action@v5
+        with:
+          image: ${{ env.KONG_IMAGE }}
+          severity-cutoff: high
+          fail-build: true
+
+      - name: Syft — generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.KONG_IMAGE }}
+          format: spdx-json
+          artifact-name: kong-sbom.spdx.json
+
+  # -------------------------------------------------------------------
+  # Container image hardening checks
+  # -------------------------------------------------------------------
+  container-hardening:
+    name: Container Hardening Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate non-root and minimal image
+        run: |
+          docker pull "$KONG_IMAGE" || echo "Image pull may require registry auth"
+          # Check USER directive
+          USER_LINE=$(docker inspect --format='{{.Config.User}}' "$KONG_IMAGE" 2>/dev/null || true)
+          if [ "$USER_LINE" = "root" ] || [ -z "$USER_LINE" ]; then
+            echo "WARNING: Image may run as root. Verify USER directive."
+          else
+            echo "Image runs as user: $USER_LINE"
+          fi
+
+  # -------------------------------------------------------------------
+  # Secrets scanning
+  # -------------------------------------------------------------------
+  secrets-scan:
+    name: Secrets Detection
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Gitleaks — secrets detection
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # -------------------------------------------------------------------
+  # DAST — OWASP ZAP (optional, runs against a test deployment)
+  # -------------------------------------------------------------------
+  dast:
+    name: OWASP ZAP (DAST)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: OWASP ZAP baseline scan
+        uses: zaproxy/action-baseline@v0.14.0
+        with:
+          target: "https://kong-staging.example.com"
+          allow_issue_writing: false

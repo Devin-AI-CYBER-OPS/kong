@@ -1,0 +1,113 @@
+# Security: Helm values for deploying Keycloak alongside Kong.
+# Uses the Bitnami Keycloak chart (https://github.com/bitnami/charts/tree/main/bitnami/keycloak).
+# References: NIST SP 800-63B, DISA STIG V-222596/V-222602
+
+# -- Keycloak image --
+image:
+  registry: registry1.dso.mil
+  repository: ironbank/opensource/keycloak/keycloak
+  tag: "26.0"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets:
+  - name: registry1-credentials
+
+# -- Replica count for HA --
+replicaCount: 2
+
+# -- TLS configuration (STIG: TLS 1.2+ only) --
+tls:
+  enabled: true
+  existingSecret: keycloak-tls-cert
+  usePem: true
+
+# -- Admin credentials (referenced from K8s secret) --
+auth:
+  adminUser: admin
+  existingSecret: keycloak-admin-credentials
+  passwordSecretKey: admin-password
+
+# -- HTTPS-only listeners --
+extraEnvVars:
+  - name: KC_HOSTNAME_STRICT_HTTPS
+    value: "true"
+  - name: KC_HTTP_ENABLED
+    value: "false"
+  - name: KC_HTTPS_PROTOCOLS
+    value: "TLSv1.2,TLSv1.3"
+  - name: KC_FEATURES
+    value: "token-exchange,admin-fine-grained-authz"
+
+# -- PostgreSQL backend --
+postgresql:
+  enabled: true
+  auth:
+    existingSecret: keycloak-postgresql-credentials
+    secretKeys:
+      adminPasswordKey: postgres-password
+      userPasswordKey: password
+  primary:
+    persistence:
+      enabled: true
+      size: 20Gi
+      storageClass: gp3-encrypted
+    resources:
+      requests:
+        cpu: "250m"
+        memory: "512Mi"
+      limits:
+        cpu: "1000m"
+        memory: "2Gi"
+    podSecurityContext:
+      runAsNonRoot: true
+      seccompProfile:
+        type: RuntimeDefault
+
+# -- Keycloak pod resources --
+resources:
+  requests:
+    cpu: "500m"
+    memory: "1Gi"
+  limits:
+    cpu: "2000m"
+    memory: "4Gi"
+
+# -- Pod security --
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  readOnlyRootFilesystem: false   # Keycloak writes to /tmp at runtime
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+# -- Realm import for Kong federation --
+keycloakConfigCli:
+  enabled: true
+  existingConfigmap: keycloak-realm-import
+  # ConfigMap contains the realm JSON from deploy/keycloak-integration/keycloak-realm-export.json
+
+# -- Service --
+service:
+  type: ClusterIP
+  ports:
+    https: 8443
+
+# -- Ingress (optional — behind Kong proxy in most topologies) --
+ingress:
+  enabled: false
+
+# -- Probes --
+readinessProbe:
+  enabled: true
+  initialDelaySeconds: 30
+
+livenessProbe:
+  enabled: true
+  initialDelaySeconds: 60

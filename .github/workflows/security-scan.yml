@@ -80,10 +80,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Trivy — container image CVE scan
+      - name: Trivy — filesystem vulnerability scan
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: ${{ env.KONG_IMAGE }}
+          scan-type: "fs"
+          scan-ref: "."
           format: "sarif"
           output: "trivy-results.sarif"
           severity: "HIGH,CRITICAL"
@@ -95,17 +96,17 @@ jobs:
         with:
           sarif_file: trivy-results.sarif
 
-      - name: Grype — secondary CVE scan
+      - name: Grype — secondary filesystem scan
         uses: anchore/scan-action@v5
         with:
-          image: ${{ env.KONG_IMAGE }}
+          path: "."
           severity-cutoff: high
           fail-build: true
 
       - name: Syft — generate SBOM
         uses: anchore/sbom-action@v0
         with:
-          image: ${{ env.KONG_IMAGE }}
+          path: "."
           format: spdx-json
           artifact-name: kong-sbom.spdx.json
 

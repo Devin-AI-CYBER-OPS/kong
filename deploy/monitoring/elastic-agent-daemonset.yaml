@@ -17,13 +17,17 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: elastic-agent
+      annotations:
+        # Security: elastic-agent requires root (UID 0) for host log file access.
+        # Compensating controls: allowPrivilegeEscalation=false, readOnlyRootFilesystem=true,
+        # host paths mounted read-only.
+        ignore-check.kube-linter.io/run-as-non-root: "elastic-agent requires root for host log access"
     spec:
       serviceAccountName: elastic-agent
       # Security: agent needs root for host log file access; securityContext
       # constraints applied at container level to satisfy kube-linter
       securityContext:
         runAsUser: 0
-        runAsNonRoot: false
       tolerations:
         - key: "security-zone"
           operator: "Exists"
@@ -34,7 +38,6 @@ spec:
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
-            runAsNonRoot: false
           env:
             - name: FLEET_URL
               valueFrom:

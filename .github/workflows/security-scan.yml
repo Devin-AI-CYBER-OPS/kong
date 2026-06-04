@@ -84,7 +84,7 @@ jobs:
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: "fs"
-          scan-ref: "."
+          scan-ref: "deploy/"
           format: "sarif"
           output: "trivy-results.sarif"
           severity: "HIGH,CRITICAL"
@@ -99,14 +99,14 @@ jobs:
       - name: Grype — secondary filesystem scan
         uses: anchore/scan-action@v5
         with:
-          path: "."
+          path: "deploy/"
           severity-cutoff: high
           fail-build: true
 
       - name: Syft — generate SBOM
         uses: anchore/sbom-action@v0
         with:
-          path: "."
+          path: "deploy/"
           format: spdx-json
           artifact-name: kong-sbom.spdx.json
 

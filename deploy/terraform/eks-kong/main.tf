@@ -217,6 +217,7 @@ resource "kubernetes_resource_quota" "kong" {
 resource "aws_secretsmanager_secret" "kong_tls_cert" {
   name                    = "${var.cluster_name}/kong/tls-cert"
   description             = "Kong proxy TLS certificate"
+  kms_key_id              = aws_kms_key.eks.arn
   recovery_window_in_days = 30
   tags                    = var.tags
 }
@@ -224,6 +225,7 @@ resource "aws_secretsmanager_secret" "kong_tls_cert" {
 resource "aws_secretsmanager_secret" "kong_oidc_client_secret" {
   name                    = "${var.cluster_name}/kong/oidc-client-secret"
   description             = "Keycloak OIDC client secret for Kong"
+  kms_key_id              = aws_kms_key.eks.arn
   recovery_window_in_days = 30
   tags                    = var.tags
 }
@@ -231,6 +233,7 @@ resource "aws_secretsmanager_secret" "kong_oidc_client_secret" {
 resource "aws_secretsmanager_secret" "elastic_api_key" {
   name                    = "${var.cluster_name}/kong/elastic-api-key"
   description             = "Elasticsearch API key for Kong logging"
+  kms_key_id              = aws_kms_key.eks.arn
   recovery_window_in_days = 30
   tags                    = var.tags
 }
@@ -265,7 +268,7 @@ resource "aws_security_group" "kong_proxy" {
   }
 
   egress {
-    description = "Upstream services"
+    description = "Allow all egress to upstream services within VPC"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
@@ -289,6 +292,7 @@ resource "aws_security_group" "kong_admin" {
   }
 
   egress {
+    description = "Allow all egress for admin API within VPC"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"

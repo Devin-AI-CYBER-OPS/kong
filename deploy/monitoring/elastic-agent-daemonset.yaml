@@ -9,6 +9,8 @@ metadata:
   labels:
     app.kubernetes.io/name: elastic-agent
     app.kubernetes.io/part-of: kong-monitoring
+  annotations:
+    ignore-check.kube-linter.io/run-as-non-root: "elastic-agent requires root for host log access"
 spec:
   selector:
     matchLabels:
